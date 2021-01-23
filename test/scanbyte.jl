@@ -22,7 +22,9 @@ end
 
 
 @testset "Scanning" begin
-    for byteset in [
+    # We test the inverted bytesets, because the codegen is built to look for
+    # the bytes its NOT scanning for. Just to make the test easier
+    for inv_byteset in [
         ByteSet(), # empty
         ByteSet(0x00:0xff), # full
         ByteSet(0x41), # one member
@@ -35,8 +37,10 @@ end
         ByteSet(rand(0x00:0x7f, 20)), # 0 - 127
         ByteSet(rand(0x5a:0x94, 20)), # within 127 of each other
         ~ByteSet(rand(0x5a:0x94, 20)), # inv within 127
+        ByteSet([0x38, 0x40, 0x90, 0xba, 0xc5, 0xc8, 0xe7]), # at most 8 elements
         ByteSet([i for i in 0x00:0xff if rand(Bool)]) # fallback
     ]
+        byteset = ~inv_byteset
         eval(gen_scan_function(:scanbyte, byteset))
 
         # Empty
