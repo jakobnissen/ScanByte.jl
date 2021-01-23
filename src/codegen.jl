@@ -346,9 +346,9 @@ function gen_zero_code(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
         expr = gen_zero_nibble(T, sym, x, false)
     elseif length(~x) == length(Set([i & 0x0f for i in ~x]))
         expr = gen_zero_nibble(T, sym, x, true)
-    elseif iscontiguous(x)
+    elseif is_contiguous(x)
         expr = gen_zero_range(T, sym, x)
-    elseif iscontiguous(~x)
+    elseif is_contiguous(~x)
         expr = gen_zero_inv_range(T, sym, x)
     elseif minimum(x) > 127
         expr = gen_zero_128(T, sym, x, true, true)
@@ -373,6 +373,7 @@ end
 
 Base.pointer(mem::SizedMemory) = mem.ptr
 Base.length(mem::SizedMemory) = mem.len
+Base.isempty(mem::SizedMemory) = iszero(length(mem))
 @inline loadvector(::Type{T}, mem::SizedMemory) where {T <: BVec} = loadvector(T, pointer(mem))
 
 function SizedMemory(s::Union{String, SubString{String}})
@@ -382,6 +383,9 @@ end
 SizedMemory(x) = SizedMemory(pointer(x), length(x))
 
 function gen_scan_function(fnsym::Symbol, byteset::ScanByte.ByteSet)
+    isempty(byteset) && return make_empty_set_scan(fnsym)
+    length(byteset) == 256 && return make_full_set_scan(fnsym)
+
     return quote
         @inline function $(fnsym)(mem::ScanByte.SizedMemory)
             local vsym
@@ -403,3 +407,21 @@ function gen_scan_function(fnsym::Symbol, byteset::ScanByte.ByteSet)
         end
     end
 end
+
+# Special cases: Empty and full byteset
+function make_empty_set_scan(fnsym::Symbol)
+    quote
+        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
+            nothing
+        end
+    end
+end
+
+function make_full_set_scan(fnsym::Symbol)
+    quote
+        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
+            isempty(mem) ? nothing : UInt(1)
+        end
+    end
+end
+

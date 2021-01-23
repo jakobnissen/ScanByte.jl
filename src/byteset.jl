@@ -24,8 +24,6 @@ function ByteSet(it)
     ByteSet((a, b, c, d))
 end
 
-is_contiguous(s::ByteSet) = maximum(s) - minimum(s) + 1 == length(s)
-
 function Base.minimum(s::ByteSet)
     isempty(s) && Base._empty_reduce_error()
     iterate(s)[1]
@@ -46,23 +44,7 @@ end
 
 function Base.in(byte::UInt8, s::ByteSet)
     i, o = divrem(byte, UInt8(64))
-    @inbounds !iszero(s.data[i & 0x03 + 1] >>> (o & 0x3f))
-end
-
-function push(s::ByteSet, v)
-    vT = convert(UInt8, v)
-    i, o = divrem(vT, UInt8(64))
-    a, b, c, d = s.data
-    if i == 0x00
-        a |= UInt(1) << (o & 0x3f)
-    elseif i == 0x01
-        b |= UInt(1) << (o & 0x3f)
-    elseif i == 0x02
-        c |= UInt(1) << (o & 0x3f)
-    else
-        d |= UInt(1) << (o & 0x3f)
-    end
-    ByteSet((a, b, c, d))
+    @inbounds !(iszero(s.data[i & 0x03 + 0x01] >>> (o & 0x3f) & UInt(1)))
 end
 
 function Base.iterate(s::ByteSet, state=UInt(0))
@@ -86,4 +68,4 @@ function Base.:~(s::ByteSet)
     ByteSet((~a, ~b, ~c, ~d))
 end
 
-iscontiguous(s::ByteSet) = isempty(s) || (maximum(s) - minimum(s) + 1) == length(s)
+is_contiguous(s::ByteSet) = isempty(s) || (maximum(s) - minimum(s) + 1 == length(s))
