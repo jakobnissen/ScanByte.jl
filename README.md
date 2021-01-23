@@ -1,4 +1,10 @@
 # ScanByte.jl
+
+![CI](https://github.com/jakobnissen/ScanByte.jl/workflows/CI/badge.svg)
+[![Codecov](https://codecov.io/gh/jakobnissen/ScanByte.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/jakobnissen/ScanByte.jl)
+
+_Find your bytes. Fast._
+
 ScanByte is a package to solve a simple problem: Find the first byte in a byte array that is member of a compile-time constant set of bytes. It is somewhat similar to `memchr`.
 
 ScanByte is micro-optimized for speed. On my laptop it can hit the RAM bandwidth limit of around 20 GB/s, depending on the input byte set. This speed makes it a suitable building block for string search engines, Regex implementations, parsers and similar use cases.
