@@ -382,28 +382,34 @@ end
 
 SizedMemory(x) = SizedMemory(pointer(x), length(x))
 
+function gen_function_content(vcode::Expr)
+    return quote
+        local vsym
+        local nscanned
+        nscanned = zero(UInt)
+        while true
+            bytes = ScanByte.loadvector(ScanByte.DEFVEC, pointer(mem) + nscanned)
+            vsym = $vcode
+            ScanByte.haszerolayout(vsym) || break
+            nscanned += sizeof(ScanByte.DEFVEC)
+            nscanned > length(mem) && break
+        end
+        nscanned += ScanByte.leading_zero_bytes(vsym) + 1
+        if nscanned > length(mem)
+            return nothing
+        else
+            return nscanned
+        end
+    end
+end
+
 function gen_scan_function(fnsym::Symbol, byteset::ScanByte.ByteSet)
     isempty(byteset) && return make_empty_set_scan(fnsym)
     length(byteset) == 256 && return make_full_set_scan(fnsym)
 
     return quote
         @inline function $(fnsym)(mem::ScanByte.SizedMemory)
-            local vsym
-            local nscanned
-            nscanned = zero(UInt)
-            while true
-                bytes = ScanByte.loadvector(ScanByte.DEFVEC, pointer(mem) + nscanned)
-                vsym = $(gen_zero_code(DEFVEC, :bytes, ~byteset))
-                ScanByte.haszerolayout(vsym) || break
-                nscanned += sizeof(ScanByte.DEFVEC)
-                nscanned > length(mem) && break
-            end
-            nscanned += ScanByte.leading_zero_bytes(vsym) + 1
-            if nscanned > length(mem)
-                return nothing
-            else
-                return nscanned
-            end
+            $(gen_function_content(gen_zero_code(DEFVEC, :bytes, ~byteset)))
         end
     end
 end
@@ -425,3 +431,6 @@ function make_full_set_scan(fnsym::Symbol)
     end
 end
 
+@eval function memchr(mem::SizedMemory, byte::UInt8)
+    $(gen_function_content(:(vpcmpeqb(bytes, DEFVEC(byte)))))
+end
