@@ -374,7 +374,6 @@ end
 Base.pointer(mem::SizedMemory) = mem.ptr
 Base.length(mem::SizedMemory) = mem.len
 Base.isempty(mem::SizedMemory) = iszero(length(mem))
-@inline loadvector(::Type{T}, mem::SizedMemory) where {T <: BVec} = loadvector(T, pointer(mem))
 
 function SizedMemory(s::Union{String, SubString{String}})
     SizedMemory(pointer(s), ncodeunits(s) % UInt)
@@ -382,43 +381,48 @@ end
 
 SizedMemory(x) = SizedMemory(pointer(x), length(x))
 
-function gen_function_content(vcode::Expr)
+function _gen_function_content(::Type{T}, vcode::Expr) where T <: BVec
     return quote
         local vsym
         local nscanned
         nscanned = zero(UInt)
         while true
-            bytes = ScanByte.loadvector(ScanByte.DEFVEC, pointer(mem) + nscanned)
+            bytes = ScanByte.loadvector($T, pointer(mem) + nscanned)
             vsym = $vcode
             ScanByte.haszerolayout(vsym) || break
-            nscanned += sizeof(ScanByte.DEFVEC)
+            nscanned += $(sizeof(T))
             nscanned > length(mem) && break
         end
         nscanned += ScanByte.leading_zero_bytes(vsym) + 1
         if nscanned > length(mem)
             return nothing
         else
-            return nscanned
+            return nscanned % Int
         end
     end
 end
 
-function gen_scan_function(fnsym::Symbol, byteset::ScanByte.ByteSet)
+function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T <: BVec
     return quote
         @inline function $(fnsym)(mem::ScanByte.SizedMemory)
             $(
                 if isempty(byteset)
                     quote nothing end
                 elseif length(byteset) == 256
-                    quote isempty(mem) ? nothing : UInt(1) end
+                    quote isempty(mem) ? nothing : 1 end
                 else
-                    gen_function_content(gen_zero_code(DEFVEC, :bytes, ~byteset))
+                    _gen_function_content(T, gen_zero_code(T, :bytes, ~byteset))
                 end
             )
         end
     end
 end
 
-@eval function memchr(mem::SizedMemory, byte::UInt8)
-    $(gen_function_content(:(vpcmpeqb(bytes, DEFVEC(byte)))))
+for T in (v128, v256)
+    @eval function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
+        $(_gen_function_content(T, :(vpcmpeqb(bytes, $(T)(byte)))))
+    end
 end
+
+gen_scan_function(fnsym::Symbol, byteset::ByteSet) = _gen_scan_function(DEFVEC, fnsym, byteset)
+memchr(mem::SizedMemory, byte::UInt8) = _memchr(DEFVEC, mem, byte)

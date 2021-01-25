@@ -5,39 +5,56 @@
 
 _Find your bytes. Fast._
 
-ScanByte is a package to solve a simple problem: Find the first byte in a byte array that is member of a compile-time constant set of bytes. It is somewhat similar to `memchr`.
+ScanByte is a package to solve a simple problem: Find the first occurrence of a byte in a chunk of memory. Think of it like a much faster version of `findfirst` that only iterates over bytes in memory.
 
-ScanByte is micro-optimized for speed. On my laptop it can hit the RAM bandwidth limit of around 20 GB/s, depending on the input byte set. This speed makes it a suitable building block for string search engines, Regex implementations, parsers and similar use cases.
+ScanByte is micro-optimized for speed. On my laptop it can hit the RAM bandwidth limit of around 20 GB/s. This speed makes it a suitable building block for string search engines, Regex implementations, parsers and similar use cases.
 
 ### Usage
-To use it, you first have to specify the set of bytes you are scanning for:
-
+The memory you are scanning should be represented by a `SizedMemory` object. That's just a struct containing a pointer to where scan should start, and a length of the memory. You can construct a `SizedMemory`from `String`s, `SubString{String}`s, and anything that implements the functions `pointer` and `length`:
 ```julia
-julia> byteset = ByteSet("Jill")
-ByteSet with 3 elements:
-  0x4a
-  0x69
-  0x6c
+julia> v = [0x01, 0x02, 0x03];
+
+julia> SizedMemory(v)
+SizedMemory(Ptr{UInt8} @0x000000010e2d6e70, 0x0000000000000003)
+
+julia> SizedMemory("ScanByte")
+SizedMemory(Ptr{UInt8} @0x000000010f164218, 0x0000000000000008)
 ```
 
-Then, you pass the byteset as well as a `Symbol` to the `gen_scan_function` function. This function returns Julia code that evaluates to a method definition of a function named by your symbol:
+ScanByte has two functions of interest. If you are simply searching for a single byte, use the `memchr` function:
 
 ```julia
-julia> eval(gen_scan_function(:scanobj, byteset))
-scanobj (generic function with 1 method)
+julia> v = [0xda, 0x00, 0x43, 0xf0];
+
+julia> findfirst(isequal(0x43), v) === memchr(SizedMemory(v), 0x43)
+true
+
+julia> findfirst(isequal(0xff), v) === memchr(SizedMemory(v), 0xff)
+true
 ```
 
-Now, you can use the `scanobj` function with `SizedMemory` object. A `SizedMemory` object contains a pointer and a length, and can be constucted from a `String` or an `Array{UInt8}` (or anything else that provides a pointer and a length.):
+If you want to scan for bytes fulfilling an arbitrary predicate `f` (like `findfirst` can do), this is only possible by moving some of the computation to compile time:
+
+First, you compute the set of bytes for which `f` is true:
 
 ```julia
-julia> scanobj(SizedMemory([0x03, 0x05, 0x6c, 0xa1]))
-0x0000000000000003
+julia> byteset = ByteSet(filter(f, 0x00:0xff));
+
 ```
 
-The function returns the 1-based index of the first byte in the byte set, or `nothing` if no bytes were found. 
+Then, you use the `gen_scan_function` with the byteset and a name of your choosing, e.g. `:foo`. This function returns a Julia expression (`Expr` object). Evaluating this expression defines a function `foo(::SizedMemory)`:
 
+```julia
+julia> eval(gen_scan_function(:scan_mem, byteset))
+scan_mem (generic function with 1 method)
+
+julia> scan_mem(SizedMemory(my_vector))
+410068
+```
+
+## Drawbacks
 At the moment, ScanByte has three major drawbacks:
 
-* It relies on metaprogramming to compute the optimal Julia code to create the scanning function. This means ScanByte might add significantly to compile times, especially when creating tonnes of scanning functions. Furthermore, it means the byte set must be known at compile time.
+* It relies on metaprogramming to compute the optimal Julia code to create the scanning function. This means the byte set must be known at compile time - unless you're scanning for just a single byte.
 * It relies on explicit SIMD instructions. It must run on computers with either the `AVX2` instruction set, or with the `SSE2` and `SSSE3` sets. Also, if you create the scanning function on a computer with `AVX2` but runs it on a computer without, LLVM will probably crash.
-* There is no guaranteed stable version of detecting which SIMD instructions your Julia supports. So this package tries to guess.
+* There is no guaranteed stable version of detecting which SIMD instructions your Julia supports. So this package tries to guess by parsing some output from LLVM.
