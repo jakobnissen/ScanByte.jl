@@ -20,6 +20,19 @@
     end
 end
 
+@testset "memchr" begin
+    for byte in [0x00, 0xa0, 0xda, 0xff]
+        @test memchr(SizedMemory(UInt8[]), byte) === nothing
+        not_bytes = [i for i in 0x00:0xff if i != byte]
+        for (len, ind) in [(2, 2), (20, 14), (500, 431)]
+            v = rand(not_bytes, len)
+            @test memchr(SizedMemory(v), byte) === nothing
+            v[ind] = byte
+            @test memchr(SizedMemory(v), byte) == ind
+        end
+    end
+end
+            
 
 @testset "Scanning" begin
     # We test the inverted bytesets, because the codegen is built to look for

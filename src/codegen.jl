@@ -15,7 +15,7 @@ const _ZERO_v256 = v256(ntuple(i -> VecElement{UInt8}(0x00), 32))
 let
     llvmpaths = filter(lib -> occursin(r"LLVM\b", basename(lib)), Libdl.dllist())
     if length(llvmpaths) != 1
-        throw(ArgumentError("Found multiple LLVM libraries"))
+        throw(ArgumentError("Found one or multiple LLVM libraries"))
     end
     libllvm = Libdl.dlopen(llvmpaths[1])
     gethostcpufeatures = Libdl.dlsym(libllvm, :LLVMGetHostCPUFeatures)
@@ -404,29 +404,17 @@ function gen_function_content(vcode::Expr)
 end
 
 function gen_scan_function(fnsym::Symbol, byteset::ScanByte.ByteSet)
-    isempty(byteset) && return make_empty_set_scan(fnsym)
-    length(byteset) == 256 && return make_full_set_scan(fnsym)
-
     return quote
         @inline function $(fnsym)(mem::ScanByte.SizedMemory)
-            $(gen_function_content(gen_zero_code(DEFVEC, :bytes, ~byteset)))
-        end
-    end
-end
-
-# Special cases: Empty and full byteset
-function make_empty_set_scan(fnsym::Symbol)
-    quote
-        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
-            nothing
-        end
-    end
-end
-
-function make_full_set_scan(fnsym::Symbol)
-    quote
-        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
-            isempty(mem) ? nothing : UInt(1)
+            $(
+                if isempty(byteset)
+                    quote nothing end
+                elseif length(byteset) == 256
+                    quote isempty(mem) ? nothing : UInt(1) end
+                else
+                    gen_function_content(gen_zero_code(DEFVEC, :bytes, ~byteset))
+                end
+            )
         end
     end
 end
