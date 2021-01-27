@@ -10,7 +10,7 @@ ScanByte is a package to solve a simple problem: Find the first occurrence of a 
 ScanByte is micro-optimized for speed. On my laptop it can hit the RAM bandwidth limit of around 20 GB/s. This speed makes it a suitable building block for string search engines, Regex implementations, parsers and similar use cases.
 
 ### Usage
-The memory you are scanning should be represented by a `SizedMemory` object. That's just a struct containing a pointer to where scan should start, and a length of the memory. You can construct a `SizedMemory`from `String`s, `SubString{String}`s, and anything that implements the functions `pointer` and `length`:
+The memory you are scanning should be represented by a `SizedMemory` object. That's just a struct containing a pointer to where scan should start, and a length of the memory. You can construct a `SizedMemory`from `String`s, `SubString{String}`s, and anything that implements the functions `pointer` and `sizeof`:
 ```julia
 julia> v = [0x01, 0x02, 0x03];
 

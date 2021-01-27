@@ -1,5 +1,10 @@
 # The overall goal of the code in this file is to create code which can
 # use SIMD to find the first byte in a bytevector not contained in a ByteSet.
+
+# Due to historical reasons, this code finds the first byte that is NOT part
+# of a byteset. To make it work, I simply invert the input byteset in the
+# _gen_function_content method.
+
 # The code proceeds in the following steps in a loop:
 # * load 16 (SSSE3) or 32 (AVX2) bytes at a time to a SIMD vector V
 # * Use zerovec_* function to zero out all bytes which are in the byteset
@@ -366,6 +371,13 @@ function gen_zero_code(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
     return expr
 end
 
+"""
+    SizedMemory
+
+Construct a `SizedMemory` from a string, or something that implements `pointer` and
+`sizeof`. This struct simply wraps a pointer and a length and is completely unsafe.
+Care must be taken to ensure the underlying memory isn't garbage collected or moved.
+"""
 struct SizedMemory
     ptr::Ptr{UInt8}
     len::UInt
@@ -374,13 +386,13 @@ end
 Base.pointer(mem::SizedMemory) = mem.ptr
 Base.length(mem::SizedMemory) = mem.len
 Base.isempty(mem::SizedMemory) = iszero(length(mem))
+SizedMemory(x) = SizedMemory(pointer(x), sizeof(x))
 
-function SizedMemory(s::Union{String, SubString{String}})
-    SizedMemory(pointer(s), ncodeunits(s) % UInt)
-end
-
-SizedMemory(x) = SizedMemory(pointer(x), length(x))
-
+# The codegen is factored quite a bit out here. This is the main content of the
+# generated functions, except the vcode Expr, which is supposed to zero out any
+# bytes not in the byteset.
+# All of these functions take the BVec type to allow testing of 128-bit methods
+# on computers with 256 bit vectors.
 function _gen_function_content(::Type{T}, vcode::Expr) where T <: BVec
     return quote
         local vsym
@@ -402,6 +414,8 @@ function _gen_function_content(::Type{T}, vcode::Expr) where T <: BVec
     end
 end
 
+# Special cases for empty byteset and full byteset, else just create a function with
+# content from _gen_function_content
 function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T <: BVec
     return quote
         @inline function $(fnsym)(mem::ScanByte.SizedMemory)
@@ -419,10 +433,11 @@ function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T 
 end
 
 for T in (v128, v256)
-    @eval function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
+    @eval @inline function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
         $(_gen_function_content(T, :(vpcmpeqb(bytes, $(T)(byte)))))
     end
 end
 
+# These are the actual methods.
 gen_scan_function(fnsym::Symbol, byteset::ByteSet) = _gen_scan_function(DEFVEC, fnsym, byteset)
-memchr(mem::SizedMemory, byte::UInt8) = _memchr(DEFVEC, mem, byte)
+@inline memchr(mem::SizedMemory, byte::UInt8) = _memchr(DEFVEC, mem, byte)
