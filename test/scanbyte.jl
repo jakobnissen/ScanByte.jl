@@ -33,6 +33,11 @@ end
             end
         end
     end
+
+    # Also test memchr directly (instead of _memchr)
+    @test memchr(SizedMemory([]), 0x01) === nothing
+    @test memchr(SizedMemory([1,2,3]), 0x02) === 9
+    @test memchr(SizedMemory([1,2,3]), 0x04) === nothing
 end
             
 
@@ -86,4 +91,10 @@ end
             end
         end
     end
+
+    # Also test gen_scan_function directly (instead of _gen_scan_function)
+    eval(ScanByte.gen_scan_function(:scanbyte, ByteSet([0x02, 0x09, 0x11])))
+    @test scanbyte(SizedMemory([1,2,3])) == 9
+    @test scanbyte(SizedMemory([1,3,4])) === nothing
+    @test scanbyte(SizedMemory([1,5,6,7,4,17,13])) == 41
 end
