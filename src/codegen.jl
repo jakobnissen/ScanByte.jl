@@ -400,7 +400,7 @@ SizedMemory(x) = SizedMemory(pointer(x), sizeof(x))
 # bytes not in the byteset.
 # All of these functions take the BVec type to allow testing of 128-bit methods
 # on computers with 256 bit vectors.
-function _gen_function_content(::Type{T}, bytesym::Symbol, vcode::Expr) where T <: BVec
+function _gen_function_content(::Type{T}, bytesym::Symbol, memsym::Symbol, vcode::Expr) where T <: BVec
     vsym = gensym()
     nscannedsym = gensym()
     return quote
@@ -408,14 +408,14 @@ function _gen_function_content(::Type{T}, bytesym::Symbol, vcode::Expr) where T 
         local $nscannedsym
         $(nscannedsym) = zero(UInt)
         while true
-            $bytesym = ScanByte.loadvector($T, pointer(mem) + $nscannedsym)
+            $bytesym = ScanByte.loadvector($T, pointer($memsym) + $nscannedsym)
             $vsym = $vcode
             ScanByte.haszerolayout($vsym) || break
             $nscannedsym += $(sizeof(T))
-            $nscannedsym > length(mem) && break
+            $nscannedsym > length($memsym) && break
         end
         $nscannedsym += ScanByte.leading_zero_bytes($vsym) + 1
-        if $nscannedsym > length(mem)
+        if $nscannedsym > length($memsym)
             nothing
         else
             $nscannedsym % Int
@@ -434,7 +434,7 @@ function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T 
                 elseif length(byteset) == 256
                     quote isempty(mem) ? nothing : 1 end
                 else
-                    _gen_function_content(T, :bytes, gen_zero_code(T, :bytes, ~byteset))
+                    _gen_function_content(T, :bytes, :mem, gen_zero_code(T, :bytes, ~byteset))
                 end
             )
         end
@@ -465,7 +465,7 @@ end
 
 for T in (v128, v256)
     @eval @inline function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
-        $(_gen_function_content(T, :bytes, :(vpcmpeqb(bytes, $(T)(byte)))))
+        $(_gen_function_content(T, :bytes, :mem, :(vpcmpeqb(bytes, $(T)(byte)))))
     end
 end
 
