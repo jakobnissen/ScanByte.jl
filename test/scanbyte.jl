@@ -44,7 +44,7 @@ end
 @testset "Scanning" begin
     # We test the inverted bytesets, because the codegen is built to look for
     # the bytes its NOT scanning for. Just to make the test easier
-    for T in (ScanByte.v128, ScanByte.v256)
+    for T in (ScanByte.v128, ScanByte.v256, nothing)
         for inv_byteset in [
             ByteSet(), # empty
             ByteSet(0x00:0xff), # full

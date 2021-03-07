@@ -33,7 +33,14 @@ let
     @eval const AVX2 = $(any(isequal("+avx2"), features))
 
     # Prefer 32-byte vectors because larger vectors = higher speed
-    @eval const DEFVEC = AVX2 ? v256 : v128
+    @eval const DEFVEC = if AVX2
+        v256
+    elseif SSSE3
+        v128
+    else
+        @warn "SIMD capacity not detected by ScanByte, using scalar fallback"
+        nothing
+    end
 end
 
 """
@@ -414,8 +421,8 @@ function _gen_function_content(::Type{T}, vcode::Expr) where T <: BVec
     end
 end
 
-# Special cases for empty byteset and full byteset, else just create a function with
-# content from _gen_function_content
+# Special cases for empty byteset and full byteset, and if no SIMD,
+# else just create a function with content from _gen_function_content
 function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T <: BVec
     return quote
         @inline function $(fnsym)(mem::ScanByte.SizedMemory)
@@ -432,10 +439,39 @@ function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T 
     end
 end
 
+function _gen_scan_function(::Nothing, fnsym::Symbol, byteset::ByteSet)
+    return quote
+        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
+            $(
+                if isempty(byteset)
+                    quote nothing end
+                elseif length(byteset) == 256
+                    quote isempty(mem) ? nothing : 1 end
+                else
+                    quote
+                        for i in Base.OneTo(mem.len)
+                            in(unsafe_load(mem.ptr + i - 1), $byteset) && return i
+                        end
+                        nothing
+                    end
+                end
+            )
+        end
+    end
+end
+
+
 for T in (v128, v256)
     @eval @inline function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
         $(_gen_function_content(T, :(vpcmpeqb(bytes, $(T)(byte)))))
     end
+end
+
+function _memchr(::Nothing, mem::SizedMemory, byte::UInt8)
+    for i in Base.OneTo(mem.len)
+        unsafe_load(mem.ptr + i - 1) === byte && return i
+    end
+    nothing
 end
 
 # These are the actual methods.
