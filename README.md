@@ -5,7 +5,7 @@
 
 _Find your bytes. Fast._
 
-ScanByte is a package to solve a simple problem: Find the first occurrence of a byte in a chunk of memory. Think of it like a much faster version of `findfirst` that only iterates over bytes in memory.
+ScanByte is a package to solve a simple problem: Find the first occurrence of a byte or set of bytes in a chunk of memory. Think of it like a much faster version of `findfirst` that only iterates over bytes in memory.
 
 ScanByte is micro-optimized for speed. On my laptop it can hit the RAM bandwidth limit of around 20 GB/s. This speed makes it a suitable building block for string search engines, Regex implementations, parsers and similar use cases.
 
@@ -56,5 +56,5 @@ julia> scan_mem(SizedMemory(my_vector))
 At the moment, ScanByte has three major drawbacks:
 
 * It relies on metaprogramming to compute the optimal Julia code to create the scanning function. This means the byte set must be known at compile time - unless you're scanning for just a single byte.
-* It relies on explicit SIMD instructions. It must run on computers with either the `AVX2` instruction set, or with the `SSE2` and `SSSE3` sets. Also, if you create the scanning function on a computer with `AVX2` but runs it on a computer without, LLVM will probably crash.
+* It relies on explicit SIMD instructions. To be fast, it must run on computers with either the `AVX2` instruction set, or with the `SSE2` and `SSSE3` sets. Also, if you create the scanning function on a computer with `AVX2` but runs it on a computer without, LLVM will probably crash.
 * There is no guaranteed stable version of detecting which SIMD instructions your Julia supports. So this package tries to guess by parsing some output from LLVM.
