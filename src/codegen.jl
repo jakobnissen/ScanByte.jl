@@ -429,7 +429,7 @@ end
 
 @inline function _memchr_nonempty(::Nothing, mem::SizedMemory, valbs::Val{byteset}) where byteset
     for i in Base.OneTo(mem.len)
-        in(unsafe_load(mem.ptr + i - 1), byteset) && return i
+        in(unsafe_load(mem.ptr + i - 1), byteset) || return i
     end
     nothing
 end

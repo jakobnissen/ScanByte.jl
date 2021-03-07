@@ -69,29 +69,29 @@ end
             byteset = ~inv_byteset
 
             # Empty
-            @test memchr(SizedMemory(UInt8[]), Val(byteset)) === nothing
+            @test ScanByte._memchr(T, SizedMemory(UInt8[]), Val(byteset)) === nothing
 
             # 1000 bytes not in the set
             if length(byteset) != 256
                 bytes = rand(collect(~byteset), 1000)
-                @test memchr(SizedMemory(bytes), Val(byteset)) === nothing
+                @test ScanByte._memchr(T, SizedMemory(bytes), Val(byteset)) === nothing
 
                 if !isempty(byteset)
                     bytes[500] = first(iterate(byteset))
-                    @test memchr(SizedMemory(bytes), Val(byteset)) == 500
+                    @test ScanByte._memchr(T, SizedMemory(bytes), Val(byteset)) == 500
 
                     bytes[25] = first(iterate(byteset))
-                    @test memchr(SizedMemory(bytes), Val(byteset)) == 25
+                    @test ScanByte._memchr(T, SizedMemory(bytes), Val(byteset)) == 25
                 end
 
                 resize!(bytes, 20)
-                @test memchr(SizedMemory(bytes), Val(byteset)) === nothing
+                @test ScanByte._memchr(T, SizedMemory(bytes), Val(byteset)) === nothing
             end
 
             # Short vector of bytes in the set
             if !isempty(byteset)
                 bytes = rand(collect(byteset), 128)
-                @test memchr(SizedMemory(bytes), Val(byteset)) == 1
+                @test ScanByte._memchr(T, SizedMemory(bytes), Val(byteset)) == 1
             end
         end
     end
