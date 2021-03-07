@@ -155,12 +155,12 @@ end
 
 # vpmovmskb requires AVX2, so we fall back to this.
 @inline function leading_zero_bytes(v::v128)
-    n = 0
-    for i in v.data
-        iszero(i.value) || break
-        n += 1
+    lzbits = @static if ENDIAN_BOM == 0x04030201
+        trailing_zeros(reinterpret(UInt128, v))
+    else
+        leading_zeros(reinterpret(UInt128, v))
     end
-    return n
+    div(lzbits % UInt, 8)
 end
 
 @inline function loadvector(::Type{T}, p::Ptr) where {T <: BVec}
@@ -434,11 +434,10 @@ end
     nothing
 end
 
+# At this moment, the v128 implementation with a single byte does not
+# rely on any intrinsics, and can be used for fallback.
 @inline function _memchr_nonempty(::Nothing, mem::SizedMemory, byte::UInt8)
-    for i in Base.OneTo(mem.len)
-        unsafe_load(mem.ptr + i - 1) === byte && return i
-    end
-    nothing
+    _memchr_nonempty(v128, mem, byte)
 end
 
 @inline @generated function _memchr(T, mem::SizedMemory, ::Val{byteset}) where byteset
@@ -459,97 +458,3 @@ _memchr(T, mem::SizedMemory, byte::UInt8) = _memchr_nonempty(T, mem, byte)
 memchr(mem::SizedMemory, byte::UInt8) = _memchr_nonempty(DEFVEC, mem, byte)
 
 memchr(ptr::Ptr, len::UInt, bytes) = memchr(SizedMemory(Ptr{UInt8}(ptr), len), bytes)
-
-#=
-for T in (v128, v256)
-    @eval @inline function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
-        $(_gen_function_content(T, :bytes, :mem, :(vpcmpeqb(bytes, $(T)(byte)))))
-    end
-end
-
-
-# The codegen is factored quite a bit out here. This is the main content of the
-# generated functions, except the vcode Expr, which is supposed to zero out any
-# bytes not in the byteset.
-# All of these functions take the BVec type to allow testing of 128-bit methods
-# on computers with 256 bit vectors.
-function _gen_function_content(::Type{T}, bytesym::Symbol, memsym::Symbol, vcode::Expr) where T <: BVec
-    vsym = gensym()
-    nscannedsym = gensym()
-    return quote
-        local $vsym
-        local $nscannedsym
-        $(nscannedsym) = zero(UInt)
-        while true
-            $bytesym = ScanByte.loadvector($T, pointer($memsym) + $nscannedsym)
-            $vsym = $vcode
-            ScanByte.haszerolayout($vsym) || break
-            $nscannedsym += $(sizeof(T))
-            $nscannedsym > length($memsym) && break
-        end
-        $nscannedsym += ScanByte.leading_zero_bytes($vsym) + 1
-        if $nscannedsym > length($memsym)
-            nothing
-        else
-            $nscannedsym % Int
-        end
-    end
-end
-
-# Special cases for empty byteset and full byteset, and if no SIMD,
-# else just create a function with content from _gen_function_content
-function _gen_scan_function(::Type{T}, fnsym::Symbol, byteset::ByteSet) where T <: BVec
-    return quote
-        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
-            $(
-                if isempty(byteset)
-                    quote nothing end
-                elseif length(byteset) == 256
-                    quote isempty(mem) ? nothing : 1 end
-                else
-                    _gen_function_content(T, :bytes, :mem, gen_zero_code(T, :bytes, ~byteset))
-                end
-            )
-        end
-    end
-end
-
-function _gen_scan_function(::Nothing, fnsym::Symbol, byteset::ByteSet)
-    return quote
-        @inline function $(fnsym)(mem::ScanByte.SizedMemory)
-            $(
-                if isempty(byteset)
-                    quote nothing end
-                elseif length(byteset) == 256
-                    quote isempty(mem) ? nothing : 1 end
-                else
-                    quote
-                        for i in Base.OneTo(mem.len)
-                            in(unsafe_load(mem.ptr + i - 1), $byteset) && return i
-                        end
-                        nothing
-                    end
-                end
-            )
-        end
-    end
-end
-
-
-for T in (v128, v256)
-    @eval @inline function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
-        $(_gen_function_content(T, :bytes, :mem, :(vpcmpeqb(bytes, $(T)(byte)))))
-    end
-end
-
-function _memchr(::Nothing, mem::SizedMemory, byte::UInt8)
-    for i in Base.OneTo(mem.len)
-        unsafe_load(mem.ptr + i - 1) === byte && return i
-    end
-    nothing
-end
-
-# These are the actual methods.
-gen_scan_function(fnsym::Symbol, byteset::ByteSet) = _gen_scan_function(DEFVEC, fnsym, byteset)
-@inline memchr(mem::SizedMemory, byte::UInt8) = _memchr(DEFVEC, mem, byte)
-=#
