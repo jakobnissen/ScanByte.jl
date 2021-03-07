@@ -21,7 +21,7 @@
 end
 
 @testset "memchr" begin
-    for T in (ScanByte.v128, ScanByte.v256)
+    for T in (nothing, ScanByte.v128, ScanByte.v256)
         for byte in [0x00, 0xa0, 0xda, 0xff]
             @test ScanByte._memchr(T, SizedMemory(UInt8[]), byte) === nothing
             not_bytes = [i for i in 0x00:0xff if i != byte]
