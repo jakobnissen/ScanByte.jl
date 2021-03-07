@@ -123,7 +123,7 @@ function haszerolayout end
 # LLVM to reliably emit a vptest instruction here, so I have to hardcode the
 # instrinsic in. Ideally, it could just be a Julia === check against
 # _ZERO_v256, but no can do for LLVM.
-function haszerolayout(v::v256)
+@inline function haszerolayout(v::v256)
     T64 = NTuple{4, VecElement{UInt64}}
     T8 = NTuple{32, VecElement{UInt8}}
     t64 = Base.llvmcall("%res = bitcast <32 x i8> %0 to <4 x i64>
@@ -133,7 +133,7 @@ function haszerolayout(v::v256)
     return cmp == 1
 end
 
-function haszerolayout(v::v128)
+@inline function haszerolayout(v::v128)
     ref = Ref(v.data)
     GC.@preserve ref iszero(unsafe_load(Ptr{UInt128}(pointer_from_objref(ref))))
 end
@@ -381,7 +381,7 @@ end
 
 # This is a regular function precisely because memchr with a single byte
 # should not incur specialization on the byte
-zero_code(x::BVec, byte::UInt8) = zerovec_not(x, byte)
+@inline zero_code(x::BVec, byte::UInt8) = zerovec_not(x, byte)
 
 """
     SizedMemory
