@@ -156,7 +156,7 @@ end
 # vpmovmskb requires AVX2, so we fall back to this.
 @inline function leading_zero_bytes(v::v128)
     n = 0
-    @inbounds for i in v.data
+    for i in v.data
         iszero(i.value) || break
         n += 1
     end
@@ -244,8 +244,8 @@ function load_lut(::Type{T}, v::Vector{UInt8}) where {T <: BVec}
 end  
 
 # Compute the table (aka. LUT) used to generate the bitmap in zerovec_generic.
-function generic_luts(::Type{T}, byteset::ByteSet, offset::UInt8, invert::Bool) where {
-    T <: BVec}
+function generic_luts(::Type{T}, ::Val{byteset}, offset::UInt8, invert::Bool) where {
+    byteset, T <: BVec}
     # If ascii, we set each allowed bit, but invert after vpshufb. Hence, if top bit
     # is set, it returns 0x00 and is inverted to 0xff, guaranteeing failure
     topzero = fill(invert ? 0xff : 0x00, 16)
@@ -265,7 +265,7 @@ function generic_luts(::Type{T}, byteset::ByteSet, offset::UInt8, invert::Bool) 
 end
 
 # Compute the LUT for use in zerovec_8elem.
-function elem8_luts(::Type{T}, byteset::ByteSet) where {T <: BVec}
+function elem8_luts(::Type{T}, ::Val{byteset}) where {byteset, T <: BVec}
     allowed_mask = fill(0xff, 16)
     bitindices = fill(0x00, 16)
     for (i, byte) in enumerate(byteset)
@@ -277,7 +277,7 @@ function elem8_luts(::Type{T}, byteset::ByteSet) where {T <: BVec}
 end
 
 # Compute LUT for zerovec_unique_nibble.
-function unique_lut(::Type{T}, byteset::ByteSet, invert::Bool) where {T <: BVec}
+function unique_lut(::Type{T}, ::Val{byteset}, invert::Bool) where {byteset, T <: BVec}
     # The default, unset value of the vector v must be one where v[x & 0x0f + 1] ⊻ x
     # is never accidentally zero.
     allowed = collect(0x01:0x10)
@@ -292,56 +292,58 @@ end
 # relevant values for use in the zerovec_* functions, and produce code that
 # will zero out the accepted bytes. Notably, the calculated values will all
 # be compile-time constants, EXCEPT the symbol, which represents the input vector.
-function gen_zero_generic(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
-    lut1, lut2 = generic_luts(T, x, 0x00, true)
-    return :(ScanByte.zerovec_generic($sym, $lut1, $lut2))
+@inline @generated function zero_generic(x::BVec, ::Val{bs}) where bs
+    lut1, lut2 = generic_luts(x, Val{bs}(), 0x00, true)
+    :(zerovec_generic(x, $lut1, $lut2))
 end
 
-function gen_zero_8elem(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
-    lut1, lut2 = elem8_luts(T, x)
-    return :(ScanByte.zerovec_8elem($sym, $lut1, $lut2))
+@inline @generated function zero_8elem(x::BVec, ::Val{bs}) where bs
+    lut1, lut2 = elem8_luts(x, Val{bs}())
+    :(zerovec_8elem(x, $lut1, $lut2))
 end
 
-function gen_zero_128(::Type{T}, sym::Symbol, x::ByteSet, ascii::Bool, inverted::Bool) where {T <: BVec}
+@inline @generated function zero_128(x::BVec, ::Val{bs}, ::Val{ascii}, ::Val{inverted}) where {
+    bs, ascii, inverted
+}
     if ascii && !inverted
         offset, f, invert = 0x00, ~, false
     elseif ascii && inverted
         offset, f, invert = 0x80, ~, false
     elseif !ascii && !inverted
-        offset, f, invert = minimum(x), ~, false
+        offset, f, invert = minimum(bs), ~, false
     else
-        offset, f, invert = minimum(~x), identity, true
+        offset, f, invert = minimum(~bs), identity, true
     end
-    lut = generic_luts(T, x, offset, invert)[1]
-    return :(ScanByte.zerovec_128($sym, $lut, $offset, $f))
+    (lut, _) = generic_luts(x, Val{bs}(), offset, invert)
+    :(zerovec_128(x, $lut, $offset, $f))
 end
 
-function gen_zero_range(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
-    return :(ScanByte.zerovec_range($sym, $(minimum(x)), $(UInt8(length(x)))))
+@inline @generated function zero_range(x::BVec, ::Val{bs}) where bs
+    :(zerovec_range(x, $(minimum(bs)), $(UInt8(length(bs)))))
 end
 
-function gen_zero_inv_range(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
+@inline @generated function zero_inv_range(x::BVec, ::Val{bs}) where bs
     # An inverted range is the same as a shifted range, because UInt8 arithmetic
     # is circular. So we can simply adjust the shift, and return regular vec_range
-    return :(ScanByte.zerovec_range($sym, $(maximum(~x) + 0x01), $(UInt8(length(x)))))
+    :(zerovec_range(x, $(maximum(~bs) + 0x01), $(UInt8(length(bs)))))
 end
 
-function gen_zero_nibble(::Type{T}, sym::Symbol, x::ByteSet, invert::Bool) where {T <: BVec}
-    lut = unique_lut(T, x, invert)
-    mask = maximum(invert ? ~x : x) > 0x7f ? 0x0f : 0xff
+@inline @generated function zero_nibble(x::BVec, ::Val{bs}, ::Val{invert}) where {bs, invert}
+    lut = unique_lut(x, Val{bs}(), invert)
+    mask = maximum(invert ? ~bs : bs) > 0x7f ? 0x0f : 0xff
     if invert
-        return :(ScanByte.zerovec_inv_nibble($sym, $lut, $mask))
+        :(zerovec_inv_nibble(x, $lut, $mask))
     else
-        return :(ScanByte.zerovec_nibble($sym, $lut, $mask))
+        :(zerovec_nibble(x, $lut, $mask))
     end
 end
 
-function gen_zero_same(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
-    return :(ScanByte.zerovec_same($sym, $(minimum(x))))
+@inline @generated function zero_same(x::BVec, ::Val{bs}) where bs
+    :(zerovec_same(x, $(minimum(bs))))
 end
 
-function gen_zero_not(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
-    :(ScanByte.zerovec_not($sym, $(minimum(~x))))
+@inline @generated function zero_not(x::BVec, ::Val{bs}) where bs
+    :(zerovec_not(x, $(minimum(~bs))))
 end
 
 ### ----- GEN ZERO CODE
@@ -349,34 +351,37 @@ end
 # it will produce the most optimal code which will zero out all bytes in input
 # vector of type T, which are present in B. This function tests for the most
 # efficient special cases, in order, until finally defaulting to generics.
-function gen_zero_code(::Type{T}, sym::Symbol, x::ByteSet) where {T <: BVec}
-    if length(x) == 1
-        expr = gen_zero_same(T, sym, x)
-    elseif length(x) == 255
-        return gen_zero_not(T, sym, x)
-    elseif length(x) == length(Set([i & 0x0f for i in x]))
-        expr = gen_zero_nibble(T, sym, x, false)
-    elseif length(~x) == length(Set([i & 0x0f for i in ~x]))
-        expr = gen_zero_nibble(T, sym, x, true)
-    elseif is_contiguous(x)
-        expr = gen_zero_range(T, sym, x)
-    elseif is_contiguous(~x)
-        expr = gen_zero_inv_range(T, sym, x)
-    elseif minimum(x) > 127
-        expr = gen_zero_128(T, sym, x, true, true)
-    elseif maximum(x) < 128
-        expr = gen_zero_128(T, sym, x, true, false)
-    elseif maximum(~x) - minimum(~x) < 128
-        expr = gen_zero_128(T, sym, x, false, true)
-    elseif maximum(x) - minimum(x) < 128
-        expr = gen_zero_128(T, sym, x, false, false)
-    elseif length(x) < 9
-        expr = gen_zero_8elem(T, sym, x)
+@inline @generated function zero_code(x::BVec, valbs::Val{bs}) where bs
+    if length(bs) == 1
+        :(zero_same(x, valbs))
+    elseif length(bs) == 255
+        :(zero_not(x, valbs))
+    elseif length(bs) == length(Set([i & 0x0f for i in bs]))
+        :(zero_nibble(x, valbs, Val(false)))
+    elseif length(~bs) == length(Set([i & 0x0f for i in ~bs]))
+        :(zero_nibble(x, valbs, Val(true)))
+    elseif is_contiguous(bs)
+        :(zero_range(x, valbs))
+    elseif is_contiguous(~bs)
+        :(zero_inv_range(x, valbs))
+    elseif minimum(bs) > 127
+        :(zero_128(x, valbs, $(Val(true)), $(Val(true))))
+    elseif maximum(bs) < 128
+        :(zero_128(x, valbs, $(Val(true)), $(Val(false))))
+    elseif maximum(~bs) - minimum(~bs) < 128
+        :(zero_128(x, valbs, $(Val(false)), $(Val(true))))
+    elseif maximum(bs) - minimum(bs) < 128
+        :(zero_128(x, valbs, $(Val(false)), $(Val(false))))
+    elseif length(bs) < 9
+        :(zero_8elem(x, valbs))
     else
-        expr = gen_zero_generic(T, sym, x)
+        :(zero_generic(x, valbs))
     end
-    return expr
 end
+
+# This is a regular function precisely because memchr with a single byte
+# should not incur specialization on the byte
+zero_code(x::BVec, byte::UInt8) = zerovec_not(x, byte)
 
 """
     SizedMemory
@@ -394,6 +399,74 @@ Base.pointer(mem::SizedMemory) = mem.ptr
 Base.length(mem::SizedMemory) = mem.len
 Base.isempty(mem::SizedMemory) = iszero(length(mem))
 SizedMemory(x) = SizedMemory(pointer(x), sizeof(x))
+
+"""
+    memchr(mem::SizedMemory, bytes)
+    memchr(ptr::Ptr, len::UInt, bytes)
+
+Return first position of any byte in `bytes`, in memory given by `mem`, or
+a (pointer, length) pair. Returns `nothing` if no such bytes were found.
+`bytes` can be a `Val{::ByteSet}`, in which case this function specializes 
+to the byteset, or a single `UInt8`, in which case it does not.
+"""
+function memchr end
+
+# Bytes can be a Val{byteset} or a single byte here
+@inline function _memchr_nonempty(::Type{T}, mem::SizedMemory, bytes) where {T <: BVec}
+    local zeroed
+    local nscanned
+    nscanned = zero(UInt)
+    while true
+        vector = loadvector(T, pointer(mem) + nscanned)
+        zeroed = zero_code(vector, bytes)
+        haszerolayout(zeroed) || break
+        nscanned += sizeof(T)
+        nscanned > length(mem) && break
+    end
+    nscanned += leading_zero_bytes(zeroed) + 1
+    nscanned > length(mem) ? nothing : nscanned % Int
+end
+
+@inline function _memchr_nonempty(::Nothing, mem::SizedMemory, valbs::Val{byteset}) where byteset
+    for i in Base.OneTo(mem.len)
+        in(unsafe_load(mem.ptr + i - 1), byteset) && return i
+    end
+    nothing
+end
+
+@inline function _memchr_nonempty(::Nothing, mem::SizedMemory, byte::UInt8)
+    for i in Base.OneTo(mem.len)
+        unsafe_load(mem.ptr + i - 1) === byte && return i
+    end
+    nothing
+end
+
+@inline @generated function _memchr(T, mem::SizedMemory, ::Val{byteset}) where byteset
+    if length(byteset) == 0
+        quote nothing end
+    elseif length(byteset) == 256
+        :(isempty(mem) ? nothing : 1)
+    else
+        # We invert the byteset, because for historical reasons, this package
+        # was originally written to find the first byte NOT in a byteset
+        :(_memchr_nonempty(T, mem, Val{~byteset}()))
+    end
+end
+
+@inline memchr(mem::SizedMemory, valbs::Val) = _memchr(DEFVEC, mem, valbs)
+
+_memchr(T, mem::SizedMemory, byte::UInt8) = _memchr_nonempty(T, mem, byte)
+memchr(mem::SizedMemory, byte::UInt8) = _memchr_nonempty(DEFVEC, mem, byte)
+
+memchr(ptr::Ptr, len::UInt, bytes) = memchr(SizedMemory(Ptr{UInt8}(ptr), len), bytes)
+
+#=
+for T in (v128, v256)
+    @eval @inline function _memchr(::Type{$T}, mem::SizedMemory, byte::UInt8)
+        $(_gen_function_content(T, :bytes, :mem, :(vpcmpeqb(bytes, $(T)(byte)))))
+    end
+end
+
 
 # The codegen is factored quite a bit out here. This is the main content of the
 # generated functions, except the vcode Expr, which is supposed to zero out any
@@ -479,3 +552,4 @@ end
 # These are the actual methods.
 gen_scan_function(fnsym::Symbol, byteset::ByteSet) = _gen_scan_function(DEFVEC, fnsym, byteset)
 @inline memchr(mem::SizedMemory, byte::UInt8) = _memchr(DEFVEC, mem, byte)
+=#

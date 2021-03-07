@@ -38,6 +38,11 @@ end
     @test memchr(SizedMemory([]), 0x01) === nothing
     @test memchr(SizedMemory([1,2,3]), 0x02) === 9
     @test memchr(SizedMemory([1,2,3]), 0x04) === nothing
+    
+    # Test the memchr method with pointer
+    bytes = [1,2,3]
+    @test memchr(pointer(bytes), UInt(11), 0x02) === 9
+    @test memchr(pointer(bytes), UInt(11), 0x03) === nothing
 end
             
 
@@ -62,39 +67,43 @@ end
             ByteSet([i for i in 0x00:0xff if rand(Bool)]) # fallback
         ]
             byteset = ~inv_byteset
-            eval(ScanByte._gen_scan_function(T, :scanbyte, byteset))
 
             # Empty
-            @test scanbyte(SizedMemory(UInt8[])) === nothing
+            @test memchr(SizedMemory(UInt8[]), Val(byteset)) === nothing
 
             # 1000 bytes not in the set
             if length(byteset) != 256
                 bytes = rand(collect(~byteset), 1000)
-                @test scanbyte(SizedMemory(bytes)) === nothing
+                @test memchr(SizedMemory(bytes), Val(byteset)) === nothing
 
                 if !isempty(byteset)
                     bytes[500] = first(iterate(byteset))
-                    @test scanbyte(SizedMemory(bytes)) == 500
+                    @test memchr(SizedMemory(bytes), Val(byteset)) == 500
 
                     bytes[25] = first(iterate(byteset))
-                    @test scanbyte(SizedMemory(bytes)) == 25
+                    @test memchr(SizedMemory(bytes), Val(byteset)) == 25
                 end
 
                 resize!(bytes, 20)
-                @test scanbyte(SizedMemory(bytes)) === nothing
+                @test memchr(SizedMemory(bytes), Val(byteset)) === nothing
             end
 
             # Short vector of bytes in the set
             if !isempty(byteset)
                 bytes = rand(collect(byteset), 128)
-                @test scanbyte(SizedMemory(bytes)) == 1
+                @test memchr(SizedMemory(bytes), Val(byteset)) == 1
             end
         end
     end
 
     # Also test gen_scan_function directly (instead of _gen_scan_function)
-    eval(ScanByte.gen_scan_function(:scanbyte, ByteSet([0x02, 0x09, 0x11])))
-    @test scanbyte(SizedMemory([1,2,3])) == 9
-    @test scanbyte(SizedMemory([1,3,4])) === nothing
-    @test scanbyte(SizedMemory([1,5,6,7,4,17,13])) == 41
+    byteset = ByteSet([0x02, 0x09, 0x11])
+    @test memchr(SizedMemory([1,2,3]), Val(byteset)) == 9
+    @test memchr(SizedMemory([1,3,4]), Val(byteset)) === nothing
+    @test memchr(SizedMemory([1,5,6,7,4,17,13]), Val(byteset)) == 41
+
+    # Test the memchr method with pointer
+    bytes = [1,5,6,7,4,17,13]
+    @test memchr(pointer(bytes), UInt(45), Val(byteset)) === 41
+    @test memchr(pointer(bytes), UInt(33), Val(byteset)) === nothing
 end

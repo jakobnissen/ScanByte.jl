@@ -6,6 +6,6 @@ using SIMD
 include("byteset.jl")
 include("codegen.jl")
 
-export SizedMemory, ByteSet, gen_scan_function, memchr
+export SizedMemory, ByteSet, memchr
 
 end # module

@@ -1,3 +1,8 @@
+## Release 0.3
+__Breaking changes__
+
+* `gen_scan_function` has been removed. Instead, you should now scan for multiple bytes by calling `memchr(::SizedMemory, Val(byteset))`.
+
 ## Release 0.2
 __Breaking changes__
 
