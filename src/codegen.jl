@@ -454,7 +454,7 @@ end
 
 @inline memchr(mem::SizedMemory, valbs::Val) = _memchr(DEFVEC, mem, valbs)
 
-_memchr(T, mem::SizedMemory, byte::UInt8) = _memchr_nonempty(T, mem, byte)
-memchr(mem::SizedMemory, byte::UInt8) = _memchr_nonempty(DEFVEC, mem, byte)
+@inline _memchr(T, mem::SizedMemory, byte::UInt8) = _memchr_nonempty(T, mem, byte)
+@inline memchr(mem::SizedMemory, byte::UInt8) = _memchr_nonempty(DEFVEC, mem, byte)
 
-memchr(ptr::Ptr, len::UInt, bytes) = memchr(SizedMemory(Ptr{UInt8}(ptr), len), bytes)
+@inline memchr(ptr::Ptr, len::UInt, bytes) = memchr(SizedMemory(Ptr{UInt8}(ptr), len), bytes)
