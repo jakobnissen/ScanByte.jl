@@ -444,7 +444,7 @@ end
     if length(byteset) == 0
         quote nothing end
     elseif length(byteset) == 256
-        :(isempty(mem) ? nothing : 1)
+        :(ifelse(isempty(mem), nothing, 1))
     else
         # We invert the byteset, because for historical reasons, this package
         # was originally written to find the first byte NOT in a byteset

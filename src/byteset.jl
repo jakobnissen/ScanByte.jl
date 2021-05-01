@@ -26,7 +26,7 @@ end
 
 function Base.minimum(s::ByteSet)
     isempty(s) && Base._empty_reduce_error()
-    iterate(s)[1]
+    (iterate(s)::Tuple{UInt8, Any})[1]
 end
 
 function Base.maximum(s::ByteSet)
@@ -68,4 +68,4 @@ function Base.:~(s::ByteSet)
     ByteSet((~a, ~b, ~c, ~d))
 end
 
-is_contiguous(s::ByteSet) = isempty(s) || (maximum(s) - minimum(s) + 1 == length(s))
+is_contiguous(s::ByteSet) = isempty(s) || (maximum(s)::UInt8 - minimum(s)::UInt8 + 1 == length(s))
