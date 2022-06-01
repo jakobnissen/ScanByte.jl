@@ -1,3 +1,6 @@
+## Release 0.3.1
+Fix issue #3 - SIMD fallback warning only emitted at package precompile time.
+
 ## Release 0.3
 __Breaking changes__
 

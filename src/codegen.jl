@@ -38,7 +38,6 @@ let
     elseif SSSE3
         v128
     else
-        @warn "SIMD capacity not detected by ScanByte, using scalar fallback"
         nothing
     end
 end
