@@ -27,12 +27,15 @@ end
     
     for byte in [0x00, 0xa0, 0xda, 0xff]
         @test memchr(SizedMemory(UInt8[]), byte) === nothing
+        @test memchr(UInt8[], byte) === nothing
         not_bytes = [i for i in 0x00:0xff if i != byte]
         for (len, ind) in [(2, 2), (20, 14), (500, 431)]
             v = rand(not_bytes, len)
             @test memchr(SizedMemory(v), byte) === nothing
+            @test memchr(v, byte) === nothing
             v[ind] = byte
             @test memchr(SizedMemory(v), byte) == ind
+            @test memchr(v, byte) == ind
         end
     end
 
@@ -103,4 +106,10 @@ end
     bytes = [1,5,6,7,4,17,13]
     @test memchr(pointer(bytes), UInt(45), Val(byteset)) === 41
     @test memchr(pointer(bytes), UInt(33), Val(byteset)) === nothing
+
+    # Test the memchr method with array/string directly
+    bytes = [1,5,6,7,4,17,13]
+    @test memchr(UInt8.(bytes), Val(byteset)) === 6
+    @test memchr(String(UInt8.(bytes)), Val(byteset)) === 6
+    @test memchr("\x03\x02", Val(byteset)) === 2
 end
