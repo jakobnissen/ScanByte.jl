@@ -1,3 +1,8 @@
+## Release 0.3.2
+* Optimise ByteSet
+* Optimise `memchr(x, ::Byte)` by calling libc's memchr
+* Add generic method `memchr(::Any, x)`, automatically creating `SizedMemory` from x
+
 ## Release 0.3.1
 Fix issue #3 - SIMD fallback warning only emitted at package precompile time.
 
