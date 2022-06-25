@@ -5,57 +5,62 @@
 
 _Find your bytes. Fast._
 
-ScanByte is a package to solve a simple problem: Find the first occurrence of a byte or set of bytes in a chunk of memory. Think of it like a much faster version of `findfirst` that only iterates over bytes in memory.
+ScanByte is a package to solve a simple problem: Find the first occurrence of a byte or any byte from a set of bytes in a chunk of memory. Think of it like a much faster version of `findfirst` that only iterates over bytes in memory.
 
 ScanByte is micro-optimized for speed. On my laptop it can hit the RAM bandwidth limit of around 20 GB/s. This speed makes it a suitable building block for string search engines, Regex implementations, parsers and similar use cases.
 
 ### Usage
-The memory you are scanning should be represented by a pointer pointing to the beginning of the memory you want to scan, and a length of the memory.
+The central function of interest in this package is `memchr`.
+The function takes a chunk of memory and some bytes, and returns the first position (1-indexed) in the chunk of memory where any byte from the byte set is found, or `nothing` if no bytes are found.
 
-Alternatively, to avoid messing around with pointers directly, you can use the exported `SizedMemory` object. That's just a struct containing a pointer and a length. You can construct a `SizedMemory`from `String`s, `SubString{String}`s, and anything that implements the functions `pointer` and `sizeof`:
+The chunk of memory can be any type which implements methods for `pointer` and `sizeof`, or alternatively you can input a raw pointer and a size.
+
+The byte set can be passed in in two different ways:
+* As a single `UInt8`, in which case ScanByte will simply dispatch to libc's memchr function
+* A `Val{bs}`, where `bs` is an instance of the type `ByteSet <: AbstractSet{UInt8}` from this package.
+
+In the latter case, ScanByte will, at compile time, pick an efficient SIMD algorithm based on the content of the byteset.
+Currently ScanByte only has SIMD algorithms for SSSE3 and AVX2 instruction sets (found in all x86-based PCs), and uses a slow fallback for CPUs without these instructions.
+
+### Example usage
+In all these examples, the input data can be a `String`, a `codeunits` object, an `Array{UInt8}`, or a pointer+length.
+Any type that implements `pointer` and `sizeof` will do.
+
+Search for a single byte:
 ```julia
-julia> v = [0x01, 0x02, 0x03];
+julia> memchr("Julia", UInt8('i'))
+4
 
-julia> SizedMemory(v)
-SizedMemory(Ptr{UInt8} @0x000000010e2d6e70, 0x0000000000000003)
-
-julia> SizedMemory("ScanByte")
-SizedMemory(Ptr{UInt8} @0x000000010f164218, 0x0000000000000008)
-```
-
-The central function of interest in this package is `memchr`. To search for a single byte, simply pass the `SizedMemory` (or a pointer and the length) to the function with the byte you are looking for:
-```julia
-julia> v = [0xda, 0x00, 0x43, 0xf0];
-
-julia> findfirst(isequal(0x43), v) === memchr(SizedMemory(v), 0x43)
+julia> memchr(codeunits("Julia"), UInt8('z')) === nothing
 true
 
-julia> memchr(SizedMemory(v), 0x43) === memchr(pointer(v), UInt(length(v)), 0x43)
-true
+julia> str = "Julia";
 
-julia> findfirst(isequal(0xff), v) === memchr(SizedMemory(v), 0xff)
-true
+julia> GC.@preserve str memchr(pointer(str), sizeof(str) % UInt, UInt8('i'))
+4
 ```
 
-If you want to scan for bytes fulfilling an arbitrary predicate `f` (like `findfirst` can do), this is only possible by moving some of the computation to compile time. To do this, first you must represent the set of bytes you are searching for as a `ByteSet` object:
-
+Search for a byteset. Here, `Val` must be used to force specialization on the byteset:
 ```julia
-julia> byteset = ByteSet(filter(f, 0x00:0xff));
+julia> bs = ByteSet([0x01, 0x6a, 0xf1]);
+
+julia> memchr([0x4a, 0xf1], Val(bs))
+3
 ```
 
-Then, you pass this byteset as `Val(byteset)`. This will create a function specialized for that particular byteset.
-
+Search using a function. To do this, you must construct a `ByteSet` using the predicate on `0x00:0xff`:
 ```julia
+julia> f(x) = in(x, 0x1a:0x4c) || in(x, 0xd1:0xf1); # some function
 
-julia> memchr(SizedMemory(my_vector), Val(byteset))
-410068
+julia> bs = ByteSet(filter(f, 0x00:0xff));
+
+julia> memchr("hello, Bob", Val(bs))
+6
 ```
-
-As usual when dealing with `Val`, be mindful that this requires the compilation of a new method instance every time you pass a previously unseen `Val` to the function.
 
 ## Drawbacks
 At the moment, ScanByte has three major drawbacks:
 
-* It relies on generated functions to compute the optimal Julia code to create the scanning function. This means the byte set must be known at compile time - unless you're scanning for just a single byte.
+* If you are search for a predicate/byteset and not a single byte, tt relies on generated functions to compute the optimal Julia code to create the scanning function. This means the byte set must be known at compile time.
 * It relies on explicit SIMD instructions. To be fast, it must run on computers with ideally the `AVX2` instruction set, or with the `SSE2` and `SSSE3` sets. Also, if you create the scanning function on a computer with `AVX2` but runs it on a computer without, LLVM will probably crash. Currently, the fallback methods are fairly slow.
 * There is no guaranteed stable version of detecting which SIMD instructions your Julia supports. So this package tries to guess by parsing some output from LLVM.

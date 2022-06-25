@@ -12,6 +12,6 @@ function __init__()
     end
 end
 
-export SizedMemory, ByteSet, memchr
+export ByteSet, memchr
 
 end # module

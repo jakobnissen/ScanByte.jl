@@ -1,3 +1,7 @@
+## [UNRELEASED]
+* Breaking: `SizedMemory` is now internal
+* Use libc memchr when byteset length is one
+
 ## Release 0.3.2
 * Optimise ByteSet
 * Optimise `memchr(x, ::Byte)` by calling libc's memchr

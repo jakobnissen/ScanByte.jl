@@ -1,3 +1,5 @@
+SizedMemory = ScanByte.SizedMemory
+
 @testset "SizedMemory" begin
     for str in ["Hello, world!", "", "αβγ", "    "]
         mem = SizedMemory(str)

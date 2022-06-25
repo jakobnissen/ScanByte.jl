@@ -11,7 +11,6 @@
 # * Use haszerolayout to check if all bytes are zero. If so, skip 16/32 bytes.
 # * Else, use leading_zero_bytes to skip that amount ahead.
 
-const BYTE_LAYOUT = Union{String, SubString{String}, Array{UInt8}}
 const v256 = Vec{32, UInt8}
 const v128 = Vec{16, UInt8}
 const BVec = Union{v128, v256}
@@ -342,20 +341,18 @@ end
     :(zerovec_same(x, $(minimum(bs))))
 end
 
-@inline @generated function zero_not(x::BVec, ::Val{bs}) where bs
-    :(zerovec_not(x, $(minimum(~bs))))
-end
-
 ### ----- GEN ZERO CODE
 # This is the main function of this file. Given a BVec type T and a byteset B,
 # it will produce the most optimal code which will zero out all bytes in input
 # vector of type T, which are present in B. This function tests for the most
 # efficient special cases, in order, until finally defaulting to generics.
 @inline @generated function zero_code(x::BVec, valbs::Val{bs}) where bs
+    # These special cases are handled completely differently
+    # and dispatch should not reach here if this is the case
+    @assert !in(length(bs), (0, 255, 256))
+
     if length(bs) == 1
         :(zero_same(x, valbs))
-    elseif length(bs) == 255
-        :(zero_not(x, valbs))
     elseif length(bs) == length(Set([i & 0x0f for i in bs]))
         :(zero_nibble(x, valbs, Val(false)))
     elseif length(~bs) == length(Set([i & 0x0f for i in ~bs]))
@@ -386,6 +383,7 @@ end
 """
     SizedMemory
 
+This is an internal type, and is considered unstable.
 Construct a `SizedMemory` from a string, or something that implements `pointer` and
 `sizeof`. This struct simply wraps a pointer and a length and is completely unsafe.
 Care must be taken to ensure the underlying memory isn't garbage collected or moved.
@@ -437,9 +435,16 @@ end
 end
 
 @inline @generated function _memchr(T, mem::SizedMemory, ::Val{byteset}) where byteset
-    if length(byteset) == 0
+    len = length(byteset)
+    # Three special cases:
+    # 1) Empty byteset: The byte is never found and always returns nothing
+    # 2) Byteset is all bytes: Byte is found at pos 1 iff mem is not empty
+    # 3) One-element byteset: Just use the non-byteset memchr method
+    if iszero(len)
         quote nothing end
-    elseif length(byteset) == 256
+    elseif isone(len)
+        return :(memchr(mem, $(first(byteset))))
+    elseif len == 256
         :(ifelse(isempty(mem), nothing, 1))
     else
         # We invert the byteset, because for historical reasons, this package
@@ -453,7 +458,7 @@ end
 
 # TODO: We might eventually replace this with a pure Julia function, but
 # for now, libc's memchr is 2x faster.
-function memchr(mem::SizedMemory, byte::UInt8)
+@inline function memchr(mem::SizedMemory, byte::UInt8)
     pos = @ccall memchr(pointer(mem)::Ptr{UInt8}, byte::Cint, length(mem)::Csize_t)::Ptr{Cchar}
     pos == C_NULL ? nothing : ((pos - pointer(mem)) + 1) % Int
 end
@@ -464,6 +469,6 @@ end
     memchr(SizedMemory(Ptr{UInt8}(ptr), len), byte_s)
 end
 
-@inline function memchr(x::BYTE_LAYOUT, byte_s::Union{UInt8, Val})
+@inline function memchr(x, byte_s::Union{UInt8, Val})
     GC.@preserve x memchr(SizedMemory(x), byte_s)
 end
