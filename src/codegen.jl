@@ -403,11 +403,14 @@ SizedMemory(x) = SizedMemory(pointer(x), sizeof(x))
 """
     memchr(mem::SizedMemory, bytes)
     memchr(ptr::Ptr, len::UInt, bytes)
+    memchr(mem, bytes)
 
-Return first position of any byte in `bytes`, in memory given by `mem`, or
-a (pointer, length) pair. Returns `nothing` if no such bytes were found.
+Return first position of any byte in `bytes`, in memory `mem`.
+
+Returns `nothing` if no such bytes were found.
 `bytes` can be a `Val{::ByteSet}`, in which case this function specializes 
 to the byteset, or a single `UInt8`, in which case it does not.
+`x` can be any type that implements `pointer` and `sizeof`.
 """
 function memchr end
 

@@ -25,21 +25,18 @@ function ByteSet(it)
 end
 
 function Base.minimum(s::ByteSet)
-    isempty(s) && Base._empty_reduce_error()
-    (iterate(s)::Tuple{UInt8, Any})[1]
+    y = iterate(s)
+    y === nothing ? Base._empty_reduce_error() : first(y)
 end
 
 function Base.maximum(s::ByteSet)
-    isempty(s) && Base._empty_reduce_error()
     offset = 0x03 * UInt8(64)
     for i in 0:3
         @inbounds bits = s.data[4 - i]
-        lz = leading_zeros(bits)
-        if lz != 64
-            return offset + UInt8(64) - UInt8(lz) - 0x01
-        end
-        offset -= UInt8(64)
+        iszero(bits) && continue
+        return ((3-i)*64 + (64 - leading_zeros(bits)) - 1) % UInt8
     end
+    Base._empty_reduce_error()
 end
 
 function Base.in(byte::UInt8, s::ByteSet)
@@ -47,20 +44,18 @@ function Base.in(byte::UInt8, s::ByteSet)
     @inbounds !(iszero(s.data[i & 0x03 + 0x01] >>> (o & 0x3f) & UInt(1)))
 end
 
-function Base.iterate(s::ByteSet, state=UInt(0))
+@inline function Base.iterate(s::ByteSet, state=UInt(0))
     ioffset, offset = divrem(state, UInt(64))
-    ioffset == 4 && return nothing
-    bits = @inbounds s.data[ioffset & 0x03 + 0x01] >>> offset
-    tz = trailing_zeros(bits)
-    while tz == 64
+    n = UInt(0)
+    while iszero(n)
+        ioffset > 3 && return nothing
+        n = s.data[ioffset + 1] >>> offset
+        offset *= !iszero(n)
         ioffset += 1
-        offset = UInt(0)
-        ioffset == 4 && return nothing
-        bits = s.data[ioffset & 0x03 + 0x01]
-        tz = trailing_zeros(bits)
     end
-    result = (64 * ioffset + offset + tz) % UInt8
-    result, UInt(result) + UInt(1)
+    tz = trailing_zeros(n)
+    result = (64 * (ioffset - 1) + offset + tz) % UInt8
+    (result, UInt(result) + UInt(1))
 end
 
 function Base.:~(s::ByteSet)
@@ -68,4 +63,4 @@ function Base.:~(s::ByteSet)
     ByteSet((~a, ~b, ~c, ~d))
 end
 
-is_contiguous(s::ByteSet) = isempty(s) || (maximum(s)::UInt8 - minimum(s)::UInt8 + 1 == length(s))
+is_contiguous(s::ByteSet) = isempty(s) || (maximum(s) - minimum(s) + 1 == length(s))
