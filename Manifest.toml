@@ -1,9 +1,0 @@
-# This file is machine-generated - editing it directly is not advised
-
-[[Libdl]]
-uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
-
-[[SIMD]]
-git-tree-sha1 = "b2202f63f62d8c1214ed16c18319f72fa74adc4d"
-uuid = "fdea26ae-647d-5447-a871-4b548cad5224"
-version = "3.2.1"

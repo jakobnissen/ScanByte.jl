@@ -1,7 +1,7 @@
 module ScanByte
 
-using Libdl
-using SIMD
+using Libdl: Libdl
+using SIMD: SIMD
 
 include("byteset.jl")
 include("codegen.jl")

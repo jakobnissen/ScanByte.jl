@@ -11,18 +11,19 @@
 # * Use haszerolayout to check if all bytes are zero. If so, skip 16/32 bytes.
 # * Else, use leading_zero_bytes to skip that amount ahead.
 
-const v256 = Vec{32, UInt8}
-const v128 = Vec{16, UInt8}
+const v256 = SIMD.Vec{32, UInt8}
+const v128 = SIMD.Vec{16, UInt8}
 const BVec = Union{v128, v256}
 const _ZERO_v256 = v256(ntuple(i -> VecElement{UInt8}(0x00), 32))
 
 # Discover if the system CPU has SSSE or AVX2 instruction sets
 let
-    llvmpaths = filter(lib -> occursin(r"LLVM\b", basename(lib)), Libdl.dllist())
-    if length(llvmpaths) != 1
-        throw(ArgumentError("Found one or multiple LLVM libraries"))
+    llvmpath = if VERSION ≥ v"1.6.0-DEV.1429"
+        Base.libllvm_path()
+    else
+        only(filter(lib->occursin(r"LLVM\b", basename(lib)), Libdl.dllist()))
     end
-    libllvm = Libdl.dlopen(llvmpaths[1])
+    libllvm = Libdl.dlopen(llvmpath)
     gethostcpufeatures = Libdl.dlsym(libllvm, :LLVMGetHostCPUFeatures)
     features_cstring = ccall(gethostcpufeatures, Cstring, ())
     features = split(unsafe_string(features_cstring), ',')
@@ -87,7 +88,7 @@ let
 
     for N in (16, 32)
         T = NTuple{N, VecElement{UInt8}}
-        ST = Vec{N, UInt8}
+        ST = SIMD.Vec{N, UInt8}
         instruction_set = N == 16 ? "ssse3" : "avx2"
         instruction_tail = N == 16 ? ".128" : ""
         intrinsic = "llvm.x86.$(instruction_set).pshuf.b$(instruction_tail)"
@@ -116,26 +117,7 @@ end
 
 Test if the vector consists of all zeros.
 """
-function haszerolayout end
-
-# This assembly is horribly roundabout, because it's REALLY hard to get
-# LLVM to reliably emit a vptest instruction here, so I have to hardcode the
-# instrinsic in. Ideally, it could just be a Julia === check against
-# _ZERO_v256, but no can do for LLVM.
-@inline function haszerolayout(v::v256)
-    T64 = NTuple{4, VecElement{UInt64}}
-    T8 = NTuple{32, VecElement{UInt8}}
-    t64 = Base.llvmcall("%res = bitcast <32 x i8> %0 to <4 x i64>
-    ret <4 x i64> %res", T64, Tuple{T8}, v.data)
-    cmp = ccall("llvm.x86.avx.ptestz.256", llvmcall, UInt32,
-    (NTuple{4, VecElement{UInt64}}, NTuple{4, VecElement{UInt64}}), t64, t64)
-    return cmp == 1
-end
-
-@inline function haszerolayout(v::v128)
-    ref = Ref(v.data)
-    GC.@preserve ref iszero(unsafe_load(Ptr{UInt128}(pointer_from_objref(ref))))
-end
+@inline haszerolayout(v::BVec) = iszero(mapreduce(i -> i.value, |, v.data))
 
 "Count the number of 0x00 bytes in a vector"
 @inline function leading_zero_bytes(v::v256)
@@ -162,9 +144,7 @@ end
     div(lzbits % UInt, 8)
 end
 
-@inline function loadvector(::Type{T}, p::Ptr) where {T <: BVec}
-    unsafe_load(Ptr{T}(p))
-end
+@inline loadvector(::Type{T}, p::Ptr) where {T <: BVec} = unsafe_load(Ptr{T}(p))
 
 # We have this as a separate function to keep the same constant mask in memory.
 @inline shrl4(x) = x >>> 0x04
