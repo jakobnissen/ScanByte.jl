@@ -11,6 +11,7 @@
 # * Use haszerolayout to check if all bytes are zero. If so, skip 16/32 bytes.
 # * Else, use leading_zero_bytes to skip that amount ahead.
 
+const BYTE_LAYOUT = Union{String, SubString{String}, Array{UInt8}}
 const v256 = Vec{32, UInt8}
 const v128 = Vec{16, UInt8}
 const BVec = Union{v128, v256}
@@ -410,14 +411,13 @@ to the byteset, or a single `UInt8`, in which case it does not.
 """
 function memchr end
 
-# Bytes can be a Val{byteset} or a single byte here
-@inline function _memchr_nonempty(::Type{T}, mem::SizedMemory, bytes) where {T <: BVec}
+@inline function _memchr_nonempty(::Type{T}, mem::SizedMemory, bs::Val) where {T <: BVec}
     local zeroed
     local nscanned
     nscanned = zero(UInt)
     while true
         vector = loadvector(T, pointer(mem) + nscanned)
-        zeroed = zero_code(vector, bytes)
+        zeroed = zero_code(vector, bs)
         haszerolayout(zeroed) || break
         nscanned += sizeof(T)
         nscanned > length(mem) && break
@@ -433,12 +433,6 @@ end
     nothing
 end
 
-# At this moment, the v128 implementation with a single byte does not
-# rely on any intrinsics, and can be used for fallback.
-@inline function _memchr_nonempty(::Nothing, mem::SizedMemory, byte::UInt8)
-    _memchr_nonempty(v128, mem, byte)
-end
-
 @inline @generated function _memchr(T, mem::SizedMemory, ::Val{byteset}) where byteset
     if length(byteset) == 0
         quote nothing end
@@ -451,9 +445,22 @@ end
     end
 end
 
+# Default method given a byteset, dispatches to default vector type
 @inline memchr(mem::SizedMemory, valbs::Val) = _memchr(DEFVEC, mem, valbs)
 
-@inline _memchr(T, mem::SizedMemory, byte::UInt8) = _memchr_nonempty(T, mem, byte)
-@inline memchr(mem::SizedMemory, byte::UInt8) = _memchr_nonempty(DEFVEC, mem, byte)
+# TODO: We might eventually replace this with a pure Julia function, but
+# for now, libc's memchr is 2x faster.
+function memchr(mem::SizedMemory, byte::UInt8)
+    pos = @ccall memchr(pointer(mem)::Ptr{UInt8}, byte::Cint, length(mem)::Csize_t)::Ptr{Cchar}
+    pos == C_NULL ? nothing : ((pos - pointer(mem)) + 1) % Int
+end
 
-@inline memchr(ptr::Ptr, len::UInt, bytes) = memchr(SizedMemory(Ptr{UInt8}(ptr), len), bytes)
+### Generic methods for both ::UInt8 and ::Val{ByteSet}
+
+@inline function memchr(ptr::Ptr, len::UInt, byte_s::Union{UInt8, Val})
+    memchr(SizedMemory(Ptr{UInt8}(ptr), len), byte_s)
+end
+
+@inline function memchr(x::BYTE_LAYOUT, byte_s::Union{UInt8, Val})
+    GC.@preserve x memchr(SizedMemory(x), byte_s)
+end

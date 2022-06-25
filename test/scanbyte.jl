@@ -20,25 +20,22 @@
     end
 end
 
-@testset "memchr" begin
-    for T in (nothing, ScanByte.v128, ScanByte.v256)
-        for byte in [0x00, 0xa0, 0xda, 0xff]
-            @test ScanByte._memchr(T, SizedMemory(UInt8[]), byte) === nothing
-            not_bytes = [i for i in 0x00:0xff if i != byte]
-            for (len, ind) in [(2, 2), (20, 14), (500, 431)]
-                v = rand(not_bytes, len)
-                @test ScanByte._memchr(T, SizedMemory(v), byte) === nothing
-                v[ind] = byte
-                @test ScanByte._memchr(T, SizedMemory(v), byte) == ind
-            end
-        end
-    end
-
-    # Also test memchr directly (instead of _memchr)
+@testset "memchr of byte" begin
     @test memchr(SizedMemory([]), 0x01) === nothing
     @test memchr(SizedMemory([1,2,3]), 0x02) === 9
     @test memchr(SizedMemory([1,2,3]), 0x04) === nothing
     
+    for byte in [0x00, 0xa0, 0xda, 0xff]
+        @test memchr(SizedMemory(UInt8[]), byte) === nothing
+        not_bytes = [i for i in 0x00:0xff if i != byte]
+        for (len, ind) in [(2, 2), (20, 14), (500, 431)]
+            v = rand(not_bytes, len)
+            @test memchr(SizedMemory(v), byte) === nothing
+            v[ind] = byte
+            @test memchr(SizedMemory(v), byte) == ind
+        end
+    end
+
     # Test the memchr method with pointer
     bytes = [1,2,3]
     @test memchr(pointer(bytes), UInt(11), 0x02) === 9
