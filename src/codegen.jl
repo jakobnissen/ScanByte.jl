@@ -214,7 +214,6 @@ end
 end
 
 # Simplest of all - and fastest!
-@inline zerovec_not(x::BVec, y::UInt8) = vpcmpeqb(x, typeof(x)(y))
 @inline zerovec_same(x::BVec, y::UInt8) = x ⊻ y
 
 function load_lut(::Type{T}, v::Vector{UInt8}) where {T <: BVec}
@@ -356,10 +355,6 @@ end
     end
 end
 
-# This is a regular function precisely because memchr with a single byte
-# should not incur specialization on the byte
-@inline zero_code(x::BVec, byte::UInt8) = zerovec_not(x, byte)
-
 """
     SizedMemory
 
@@ -379,16 +374,17 @@ Base.isempty(mem::SizedMemory) = iszero(length(mem))
 SizedMemory(x) = SizedMemory(pointer(x), sizeof(x))
 
 """
-    memchr(mem::SizedMemory, bytes)
+    memchr(x, bytes)
     memchr(ptr::Ptr, len::UInt, bytes)
-    memchr(mem, bytes)
 
-Return first position of any byte in `bytes`, in memory `mem`.
+Return first position of any byte in `bytes`, in memory `mem`, or
+`nothing` if no bytes were found
 
-Returns `nothing` if no such bytes were found.
 `bytes` can be a `Val{::ByteSet}`, in which case this function specializes 
 to the byteset, or a single `UInt8`, in which case it does not.
-`x` can be any type that implements `pointer` and `sizeof`.
+
+`x` can be any type that implements `pointer` and `sizeof`, or alternatively
+a pointer and a memory length can be passed.
 """
 function memchr end
 
@@ -442,8 +438,6 @@ end
     pos = @ccall memchr(pointer(mem)::Ptr{UInt8}, byte::Cint, length(mem)::Csize_t)::Ptr{Cchar}
     pos == C_NULL ? nothing : ((pos - pointer(mem)) + 1) % Int
 end
-
-### Generic methods for both ::UInt8 and ::Val{ByteSet}
 
 @inline function memchr(ptr::Ptr, len::UInt, byte_s::Union{UInt8, Val})
     memchr(SizedMemory(Ptr{UInt8}(ptr), len), byte_s)
