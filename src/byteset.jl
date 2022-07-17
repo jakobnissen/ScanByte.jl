@@ -64,3 +64,9 @@ function Base.:~(s::ByteSet)
 end
 
 is_contiguous(s::ByteSet) = isempty(s) || (maximum(s) - minimum(s) + 1 == length(s))
+
+Base.union(a::ByteSet, b::ByteSet) = ByteSet(map(|, a.data, b.data))
+Base.intersect(a::ByteSet, b::ByteSet) = ByteSet(map(&, a.data, b.data))
+Base.symdiff(a::ByteSet, b::ByteSet) = ByteSet(map(⊻, a.data, b.data))
+Base.setdiff(a::ByteSet, b::ByteSet) = ByteSet(map((i,j) -> i & ~j, a.data, b.data))
+Base.isdisjoint(a::ByteSet, b::ByteSet) = isempty(intersect(a, b))

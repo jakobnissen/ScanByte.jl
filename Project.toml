@@ -1,7 +1,7 @@
 name = "ScanByte"
 uuid = "7b38b023-a4d7-4c5e-8d43-3f3097f304eb"
 authors = ["Jakob Nybo Nissen <jakobnybonissen@gmail.com>"]
-version = "0.3.2"
+version = "0.3.3"
 
 [deps]
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"

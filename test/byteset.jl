@@ -49,3 +49,21 @@ end
     test_inversion(ByteSet(0x12:0x11))
     test_inversion(ByteSet("abracadabra"))
 end
+
+@testset "Set operations" begin
+    sets = map(ByteSet, [
+        [],
+        [0x00:0xff;],
+        [0x00:0x02; 0x04; 0x19],
+        [0x01; 0x03; 0x09; 0xa1; 0xa1],
+        [0x41:0x8f; 0xd1:0xe1; 0xa0:0xf0],
+        [0x81:0x89; 0xd0:0xd0]
+    ])
+    ssets = map(Set, sets)
+    for (s1, ss1) in zip(sets, ssets), (s2, ss2) in zip(sets, ssets)
+        for f in [union, intersect, symdiff, setdiff]
+            @test Set(f(s1, s2)) == f(ss1, ss2)
+        end
+        @test isdisjoint(s1, s2) == isdisjoint(ss1, ss2)
+    end
+end
