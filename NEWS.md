@@ -1,6 +1,7 @@
 ## [UNRELEASED]
 * Breaking: `SizedMemory` is now internal
 * Use libc memchr when byteset length is one
+* Add more set ops to `ByteSet`
 
 ## Release 0.3.2
 * Optimise ByteSet

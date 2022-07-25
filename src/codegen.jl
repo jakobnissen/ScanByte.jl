@@ -411,6 +411,7 @@ end
 end
 
 @inline @generated function _memchr(T, mem::SizedMemory, ::Val{byteset}) where byteset
+    byteset isa ByteSet || error("memchr must be passed a Val of a ByteSet instance")
     len = length(byteset)
     # Three special cases:
     # 1) Empty byteset: The byte is never found and always returns nothing
@@ -425,7 +426,8 @@ end
     else
         # We invert the byteset, because for historical reasons, this package
         # was originally written to find the first byte NOT in a byteset
-        :(_memchr_nonempty(T, mem, Val{~byteset}()))
+        inverted = ~byteset
+        :(_memchr_nonempty(T, mem, Val{$(inverted)}()))
     end
 end
 
