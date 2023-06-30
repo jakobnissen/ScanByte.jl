@@ -34,7 +34,9 @@ let
     @eval const AVX2 = $(any(isequal("+avx2"), features))
 
     # Prefer 32-byte vectors because larger vectors = higher speed
-    @eval const DEFVEC = if AVX2
+    @eval const DEFVEC = if get(ENV, "JULIA_CPU_TARGET", "native") != "native"
+        nothing
+    elseif AVX2
         v256
     elseif SSSE3
         v128
@@ -405,7 +407,7 @@ end
 
 @inline function _memchr_nonempty(::Nothing, mem::SizedMemory, valbs::Val{byteset}) where byteset
     for i in Base.OneTo(mem.len)
-        in(unsafe_load(mem.ptr + i - 1), byteset) || return i
+        in(unsafe_load(mem.ptr + i - 1), byteset) || return i % Int
     end
     nothing
 end

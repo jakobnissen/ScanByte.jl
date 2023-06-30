@@ -1,5 +1,11 @@
-## [UNRELEASED]
+## Release 0.4.0
+__Breaking changes__
+
 * Breaking: `SizedMemory` is now internal
+
+__Other_
+_
+* Now falls back to generic code if `ENV["JULIA_CPU_TARGET"]` is set.
 * Use libc memchr when byteset length is one
 * Add more set ops to `ByteSet`
 
