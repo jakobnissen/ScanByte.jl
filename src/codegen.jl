@@ -127,8 +127,13 @@ Test if the vector consists of all zeros.
     # Then use vpcmpeqb to extract top bits of each byte to a single UInt32,
     # which is a bitvector, where the 1's were 0x00 in the original vector
     # Then use trailing/leading ones to count the number
-    eqzero = vpcmpeqb(v, _ZERO_v256).data
-    packed = ccall("llvm.x86.avx2.pmovmskb", llvmcall, UInt32, (NTuple{32, VecElement{UInt8}},), eqzero)
+    iszero = vpcmpeqb(v, _ZERO_v256)
+    packed = Base.llvmcall(
+        """%trunc = trunc <32 x i8> %0 to <32 x i1>
+        %cast = bitcast <32 x i1> %trunc to i32
+        ret i32 %cast
+        """, UInt32, Tuple{NTuple{32, VecElement{UInt8}}}, iszero.data
+    )
     @static if ENDIAN_BOM == 0x04030201
         return trailing_ones(packed)
     else
