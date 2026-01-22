@@ -73,7 +73,7 @@ with the `vpcmpeqb` and `vpmaxub` instructions.
 See also: [`vpcmpeqb`](@ref)
 """
 function vec_uge(v1::T, v2::T) where {T<:SIMD.Vec{N, UInt8} where N}
-    return vifelse((v1 < v2), zero(T), ~zero(T))
+    return SIMD.vifelse((v1 < v2), zero(T), ~zero(T))
 end
 
 # In this statement, define some functions for either 16-byte or 32-byte vectors
