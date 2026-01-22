@@ -14,7 +14,6 @@
 const v256 = SIMD.Vec{32, UInt8}
 const v128 = SIMD.Vec{16, UInt8}
 const BVec = Union{v128, v256}
-const _ZERO_v256 = v256(ntuple(i -> VecElement{UInt8}(0x00), 32))
 
 # Discover if the system CPU has SSSE or AVX2 instruction sets
 let
@@ -107,7 +106,7 @@ Test if the vector consists of all zeros.
     # First compare to zero
     # Then bitcast the result to a single UInt32,
     # Then use trailing/leading zeros to count the number
-    packed = SIMD.bitmask(v==_ZERO_v256)
+    packed = SIMD.bitmask(v==zero(v))
     @static if ENDIAN_BOM == 0x04030201
         return trailing_zeros(packed)
     else
