@@ -108,9 +108,9 @@ Test if the vector consists of all zeros.
     # Then use trailing/leading zeros to count the number
     packed = SIMD.bitmask(v==zero(v))
     @static if ENDIAN_BOM == 0x04030201
-        return trailing_zeros(packed)
+        return trailing_ones(packed)
     else
-        return leading_zeros(packed)
+        return leading_ones(packed)
     end
 end
 
