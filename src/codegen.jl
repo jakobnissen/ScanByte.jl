@@ -14,7 +14,6 @@
 const v256 = SIMD.Vec{32, UInt8}
 const v128 = SIMD.Vec{16, UInt8}
 const BVec = Union{v128, v256}
-const _ZERO_v256 = v256(ntuple(i -> VecElement{UInt8}(0x00), 32))
 
 # Discover if the system CPU has SSSE or AVX2 instruction sets
 let
@@ -52,7 +51,9 @@ Compare vectors `a` and `b` element wise and return a vector with `0x00`
 where elements are not equal, and `0xff` where they are. Maps to the `vpcmpeqb`
 AVX2 CPU instruction, or the `pcmpeqb` SSE2 instruction.
 """
-function vpcmpeqb end
+function vpcmpeqb(v1::T, v2::T) where {T<:SIMD.Vec{N, UInt8} where N}
+    return SIMD.vifelse((v1 != v2), zero(T), ~zero(T))
+end
 
 """
     vpshufb(a::BVec, b::BVec) -> BVec
@@ -71,34 +72,18 @@ with the `vpcmpeqb` and `vpmaxub` instructions.
 
 See also: [`vpcmpeqb`](@ref)
 """
-function vec_uge end
+function vec_uge(v1::T, v2::T) where {T<:SIMD.Vec{N, UInt8} where N}
+    return SIMD.vifelse((v1 < v2), zero(T), ~zero(T))
+end
 
 # In this statement, define some functions for either 16-byte or 32-byte vectors
 let
-    # icmp eq instruction yields bool (i1) values. We extend with sext to 0x00/0xff.
-    # since that's the native output of vcmpeqb instruction, LLVM will optimize it
-    # to just that.
-    vpcmpeqb_template = """%res = icmp eq <N x i8> %0, %1
-    %resb = sext <N x i1> %res to <N x i8>
-    ret <N x i8> %resb
-    """
-
-    uge_template = """%res = icmp uge <N x i8> %0, %1
-    %resb = sext <N x i1> %res to <N x i8>
-    ret <N x i8> %resb
-    """
-
     for N in (16, 32)
         T = NTuple{N, VecElement{UInt8}}
         ST = SIMD.Vec{N, UInt8}
         instruction_set = N == 16 ? "ssse3" : "avx2"
         instruction_tail = N == 16 ? ".128" : ""
         intrinsic = "llvm.x86.$(instruction_set).pshuf.b$(instruction_tail)"
-        vpcmpeqb_code = replace(vpcmpeqb_template, "<N x" => "<$(sizeof(T)) x")
-
-        @eval @inline function vpcmpeqb(a::$ST, b::$ST)
-            $(ST)(Base.llvmcall($vpcmpeqb_code, $T, Tuple{$T, $T}, a.data, b.data))
-        end
 
         @eval @inline function vpshufb(a::$ST, b::$ST)
             $(ST)(ccall($intrinsic, llvmcall, $T, ($T, $T), a.data, b.data))
@@ -106,11 +91,6 @@ let
 
         @eval const $(Symbol("_SHIFT", string(8N))) = $(ST)(ntuple(i -> 0x01 << ((i-1)%8), $N))
         @eval @inline bitshift_ones(shift::$ST) = vpshufb($(Symbol("_SHIFT", string(8N))), shift)
-
-        uge_code = replace(uge_template, "<N x" => "<$(sizeof(T)) x")
-        @eval @inline function vec_uge(a::$ST, b::$ST)
-            $(ST)(Base.llvmcall($uge_code, $T, Tuple{$T, $T}, a.data, b.data))
-        end
     end
 end
 
@@ -123,17 +103,10 @@ Test if the vector consists of all zeros.
 
 "Count the number of 0x00 bytes in a vector"
 @inline function leading_zero_bytes(v::v256)
-    # First compare to zero to get vector of 0xff where is zero, else 0x00
-    # Then use vpcmpeqb to extract top bits of each byte to a single UInt32,
-    # which is a bitvector, where the 1's were 0x00 in the original vector
-    # Then use trailing/leading ones to count the number
-    iszero = vpcmpeqb(v, _ZERO_v256)
-    packed = Base.llvmcall(
-        """%trunc = trunc <32 x i8> %0 to <32 x i1>
-        %cast = bitcast <32 x i1> %trunc to i32
-        ret i32 %cast
-        """, UInt32, Tuple{NTuple{32, VecElement{UInt8}}}, iszero.data
-    )
+    # First compare to zero
+    # Then bitcast the result to a single UInt32,
+    # Then use trailing/leading zeros to count the number
+    packed = SIMD.bitmask(v==zero(v))
     @static if ENDIAN_BOM == 0x04030201
         return trailing_ones(packed)
     else
